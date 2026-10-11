@@ -116,16 +116,14 @@ void loop() {
         return;
     }
 
-    if (!authenticated){
-        registered = authenticateTerminal();
-    }
-
-    if (!registered){
-        registered = registerTerminal();
-    }
-
     if (millis() >= nextRequestAt) {
         
-        requestQrCode();
+        if (!registered) {
+            registered = registerTerminal();
+        }
+        else {
+            requestQrCode();
+        }
+        
     }
 }

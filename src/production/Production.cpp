@@ -180,6 +180,17 @@ bool registerTerminal() {
         return true;
     }
 
+    if (statusCode == 403) {
+        showMessage(
+            "NÃO AUTORIZADO",
+            "Tentando novamente...",
+            "Caso persista:",
+            "Verifique credenciais"
+        );
+
+        authenticateTerminal();
+    }
+
     if (
         statusCode == 409 ||
         (statusCode >= 200 && statusCode < 300)
@@ -325,6 +336,17 @@ bool requestQrCode() {
     }
 
     http.end();
+
+    if (statusCode == 403) {
+        showMessage(
+            "NÃO AUTORIZADO",
+            "Tentando novamente...",
+            "Caso persista:",
+            "Verifique credenciais"
+        );
+
+        authenticateTerminal();
+    }
 
     if (statusCode == 202) {
         showMessage(
