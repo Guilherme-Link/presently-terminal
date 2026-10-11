@@ -1,8 +1,8 @@
 #include "Display.h"
 
-#include <Wire.h>
+#include <SPI.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <Adafruit_ST7789.h>
 
 #include <qrcode.h>
 
@@ -10,21 +10,28 @@
 // Hardware
 // ============================================================
 
-constexpr uint8_t oledSdaPin = 21;
-constexpr uint8_t oledSclPin = 22;
+constexpr int8_t tftSclkPin = 18;
+constexpr int8_t tftSdaPin = 23;
+constexpr int8_t tftCsPin   = -1; // A placa não tem pino de Cs
+constexpr int8_t tftDcPin   = 4;
+constexpr int8_t tftResPin  = 25;
+constexpr int8_t tftBlPin   = 32;
 
-constexpr uint8_t screenWidth = 128;
-constexpr uint8_t screenHeight = 64;
-
-constexpr uint8_t oledAddress = 0x3C;
+constexpr uint16_t screenWidth  = 240;
+constexpr uint16_t screenHeight = 240;
 
 constexpr uint8_t qrcodeVersion = 3;
 
-Adafruit_SSD1306 display(
-    screenWidth,
-    screenHeight,
-    &Wire,
-    -1
+// Cores RGB565
+constexpr uint16_t COLOR_BG      = ST77XX_WHITE;
+constexpr uint16_t COLOR_TEXT    = ST77XX_BLACK;
+constexpr uint16_t COLOR_QR_BG   = ST77XX_WHITE;
+constexpr uint16_t COLOR_QR_DARK = ST77XX_BLACK;
+
+Adafruit_ST7789 display(
+    tftCsPin,
+    tftDcPin,
+    tftResPin
 );
 
 // ============================================================
@@ -32,29 +39,26 @@ Adafruit_SSD1306 display(
 // ============================================================
 
 void initializeDisplay() {
-    Wire.begin(
-        oledSdaPin,
-        oledSclPin
+   
+    SPI.begin(
+        tftSclkPin,
+        -1,           // MISO não é necessário para este display
+        tftSdaPin,
+        tftCsPin
     );
 
-    if (
-        !display.begin(
-            SSD1306_SWITCHCAPVCC,
-            oledAddress
-        )
-    ) {
-        while (true) {
-            delay(1000);
-        }
-    }
+    pinMode(tftBlPin, OUTPUT);
+    digitalWrite(tftBlPin, HIGH);
 
-    display.ssd1306_command(SSD1306_SETCONTRAST);
-    display.ssd1306_command(0x10);
+    // Inicialização do ST7789 de 240 x 240.
+    display.init(screenWidth, screenHeight, SPI_MODE3);
+    display.setRotation(2);
 
-    display.ssd1306_command(SSD1306_SETDISPLAYCLOCKDIV);
-    display.ssd1306_command(0xF0);
+    display.fillScreen(COLOR_BG);
 
-
+    display.setTextWrap(true);
+    display.setTextSize(2);
+    display.setTextColor(COLOR_TEXT, COLOR_BG);
 }
 
 // ============================================================
@@ -62,15 +66,12 @@ void initializeDisplay() {
 // ============================================================
 
 void clearDisplay() {
-    display.clearDisplay();
+    display.fillScreen(COLOR_BG);
 
-    display.setTextColor(
-        SSD1306_WHITE
-    );
-
-    display.setTextSize(1);
-
-    display.setCursor(0, 0);
+    display.setTextColor(COLOR_TEXT, COLOR_BG);
+    display.setTextSize(2);
+    display.setTextWrap(true);
+    display.setCursor(10, 10);
 }
 
 void showMessage(
@@ -82,25 +83,23 @@ void showMessage(
 ) {
     clearDisplay();
 
-    display.println(line1);
+    display.println(" " + line1);
 
     if (line2.length() > 0) {
-        display.println(line2);
+        display.println(" " + line2);
     }
 
     if (line3.length() > 0) {
-        display.println(line3);
+        display.println(" " + line3);
     }
 
     if (line4.length() > 0) {
-        display.println(line4);
+        display.println(" " + line4);
     }
 
     if (line5.length() > 0) {
-        display.println(line5);
+        display.println(" " + line5);
     }
-
-    display.display();
 }
 
 void showError(
@@ -112,19 +111,15 @@ void showError(
     display.println("ERRO");
     display.println();
 
-    display.println(message);
+    display.println(" " + message);
 
     if (instruction.length() > 0) {
         display.println();
-        display.println(instruction);
+        display.println(" " + instruction);
     }
-
-    display.display();
 }
 
-void showQrCode(
-    const String& code
-) {
+void showQrCode(const String& code) {
     QRCode qrcode;
 
     uint8_t qrcodeData[
@@ -139,80 +134,50 @@ void showQrCode(
         code.c_str()
     );
 
-    uint8_t moduleCount = qrcode.size;
+    const uint16_t moduleCount = qrcode.size;
+    constexpr uint16_t quietZone = 4;
 
-    constexpr uint8_t quietZone = 1;
+    // O QR Code deve caber na menor dimensão da tela.
+    const uint16_t availableSize =
+        min(screenWidth, screenHeight);
 
-    uint8_t scale = min(
-        screenWidth / (moduleCount + 2 * quietZone),
-        screenHeight / (moduleCount + 2 * quietZone)
-    );
+    const uint16_t scale =
+        availableSize / (moduleCount + 2 * quietZone);
 
     if (scale == 0) {
         showError(
             "Codigo muito grande.",
             "Contate o administrador."
         );
-
         return;
     }
 
-    uint16_t qrSize =
-        moduleCount * scale;
+    const uint16_t qrSize = moduleCount * scale;
+    const uint16_t quietZoneSize = quietZone * scale;
+    const uint16_t totalSize = qrSize + 2 * quietZoneSize;
 
-    uint16_t quietZoneSize =
-        quietZone * scale;
+    // Centraliza o QR Code e sua margem.
+    const int16_t startX =
+        (screenWidth - totalSize) / 2;
 
-    uint16_t totalSize =
-        qrSize + 2 * quietZoneSize;
+    const int16_t startY =
+        (screenHeight - totalSize) / 2;
 
-    uint16_t offsetX =
-        (screenWidth - totalSize) / 2
-        + quietZoneSize;
+    // Fundo branco, incluindo a quiet zone.
+    display.fillScreen(COLOR_BG);
 
-    uint16_t offsetY =
-        (screenHeight - totalSize) / 2
-        + quietZoneSize;
-
-    display.clearDisplay();
-
-    // Fundo branco + quiet zone
-    display.fillRect(
-        offsetX - quietZoneSize,
-        offsetY - quietZoneSize,
-        totalSize,
-        totalSize,
-        SSD1306_WHITE
-    );
-
-    // QR Code preto
-    for (
-        uint8_t y = 0;
-        y < moduleCount;
-        y++
-    ) {
-        for (
-            uint8_t x = 0;
-            x < moduleCount;
-            x++
-        ) {
-            if (
-                qrcode_getModule(
-                    &qrcode,
-                    x,
-                    y
-                )
-            ) {
+    // Desenha apenas os módulos escuros do QR.
+    for (uint16_t y = 0; y < moduleCount; y++) {
+        for (uint16_t x = 0; x < moduleCount; x++) {
+            if (qrcode_getModule(&qrcode, x, y)) {
                 display.fillRect(
-                    offsetX + x * scale,
-                    offsetY + y * scale,
+                    startX + quietZoneSize + x * scale,
+                    startY + quietZoneSize + y * scale,
                     scale,
                     scale,
-                    SSD1306_BLACK
+                    COLOR_QR_DARK
                 );
             }
         }
     }
-
-    display.display();
 }
