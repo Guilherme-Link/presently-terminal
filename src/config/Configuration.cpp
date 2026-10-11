@@ -14,6 +14,9 @@ constexpr char serverAddressKey[] = "server";
 constexpr char friendlyNameKey[] = "name";
 constexpr char terminalIdKey[] = "terminalId";
 
+constexpr char usernameKey[] = "username";
+constexpr char passwordKey[] = "password";
+
 // ============================================================
 // Persistent configuration
 // ============================================================
@@ -87,6 +90,18 @@ void loadConfiguration() {
             ""
         );
 
+    terminalConfig.username =
+        preferences.getString(
+            usernameKey,
+            ""
+        );
+
+    terminalConfig.password =
+        preferences.getString(
+            passwordKey,
+            ""
+        );
+
     preferences.end();
 
     if (
@@ -140,6 +155,16 @@ void saveConfiguration() {
         terminalConfig.terminalId
     );
 
+    preferences.putString(
+        usernameKey,
+        terminalConfig.username
+    );
+
+    preferences.putString(
+        passwordKey,
+        terminalConfig.password
+    );
+
     preferences.end();
 }
 
@@ -147,7 +172,9 @@ bool hasConfiguration() {
     return
         !terminalConfig.wifiSsid.isEmpty() &&
         !terminalConfig.serverAddress.isEmpty() &&
-        !terminalConfig.friendlyName.isEmpty();
+        !terminalConfig.friendlyName.isEmpty() &&
+        !terminalConfig.username.isEmpty() &&
+        !terminalConfig.password.isEmpty();
 }
 
 // ============================================================

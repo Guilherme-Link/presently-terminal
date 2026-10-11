@@ -377,6 +377,7 @@ void enterProductionMode() {
             "Terminal nao configurado.",
             "Mude o switch para CONFIG."
         );
+        delay(1000);
 
         nextRequestAt = millis() + retryIntervalMs;
 
@@ -428,11 +429,9 @@ bool authenticateTerminal() {
 
     JsonDocument document;
 
-    document["username"] = "service";
-        //terminalConfig.username;
+    document["username"] = terminalConfig.username;
 
-    document["password"] = "service";
-        //terminalConfig.password;
+    document["password"] = terminalConfig.password;
 
     String requestBody;
 

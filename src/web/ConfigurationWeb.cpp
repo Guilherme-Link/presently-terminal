@@ -24,6 +24,7 @@ String htmlEscape(
     result.replace("<", "&lt;");
     result.replace(">", "&gt;");
     result.replace("\"", "&quot;");
+    result.replace("'", "&#39;");
 
     return result;
 }
@@ -31,7 +32,7 @@ String htmlEscape(
 String buildConfigurationPage() {
     String html;
 
-    html.reserve(5000);
+    html.reserve(6500);
 
     html += R"rawliteral(
 <!DOCTYPE html>
@@ -69,6 +70,11 @@ h1 {
     margin-top: 0;
 }
 
+h2 {
+    margin-top: 28px;
+    font-size: 19px;
+}
+
 label {
     display: block;
     margin-top: 18px;
@@ -93,6 +99,7 @@ button {
     background: #1976d2;
     color: white;
     font-size: 17px;
+    cursor: pointer;
 }
 
 .info {
@@ -105,6 +112,7 @@ button {
 .help {
     color: #666;
     font-size: 14px;
+    line-height: 1.5;
 }
 
 </style>
@@ -117,7 +125,8 @@ button {
 <h1>Configurar terminal</h1>
 
 <p>
-Configure a rede e o servidor que este terminal deve utilizar.
+Configure a rede, o servidor e as credenciais
+de serviço que este terminal deve utilizar.
 </p>
 
 <label>Identificador do terminal</label>
@@ -133,10 +142,13 @@ Configure a rede e o servidor que este terminal deve utilizar.
 </div>
 
 <p class="help">
-Este identificador é criado automaticamente e não pode ser alterado.
+Este identificador é criado automaticamente
+e não pode ser alterado.
 </p>
 
 <form method="POST" action="/save">
+
+<h2>Rede e servidor</h2>
 
 <label>Rede Wi-Fi</label>
 
@@ -151,6 +163,7 @@ Este identificador é criado automaticamente e não pode ser alterado.
     );
 
     html += R"rawliteral("
+    autocomplete="off"
     required>
 
 <label>Senha do Wi-Fi</label>
@@ -158,15 +171,14 @@ Este identificador é criado automaticamente e não pode ser alterado.
 <input
     type="password"
     name="wifiPassword"
-    placeholder="Senha da rede Wi-Fi"
-    value=")rawliteral";
+    placeholder="Deixe em branco para manter a senha atual"
+    value=""
+    autocomplete="new-password">
 
-    html += htmlEscape(
-        terminalConfig.wifiPassword
-    );
-
-    html += R"rawliteral("
-    required>
+<p class="help">
+Deixe em branco para manter a senha Wi-Fi atual.
+Para trocar a senha, informe a nova.
+</p>
 
 <label>Endereço do servidor</label>
 
@@ -208,6 +220,39 @@ ou servidor.local:8080
 Este é o nome usado para identificar o terminal no sistema.
 </p>
 
+<h2>Credenciais de serviço</h2>
+
+<label>Usuário de serviço</label>
+
+<input
+    type="text"
+    name="username"
+    placeholder="Usuário de serviço"
+    value=")rawliteral";
+
+    html += htmlEscape(
+        terminalConfig.username
+    );
+
+    html += R"rawliteral("
+    autocomplete="off"
+    required>
+
+<label>Senha de serviço</label>
+
+<input
+    type="password"
+    name="password"
+    placeholder="Deixe em branco para manter a senha atual"
+    value=""
+    autocomplete="new-password">
+
+<p class="help">
+Informe o usuário de serviço e, se desejar alterar
+a senha armazenada, digite uma nova senha.
+Deixe a senha em branco para manter a atual.
+</p>
+
 <button type="submit">
 Salvar configuração
 </button>
@@ -242,8 +287,7 @@ String getFormValue(
         return "";
     }
 
-    String value =
-        webServer.arg(name);
+    String value = webServer.arg(name);
 
     value.trim();
 
@@ -263,31 +307,63 @@ void handleSaveConfiguration() {
     String friendlyName =
         getFormValue("friendlyName");
 
+    String username =
+        getFormValue("username");
+
+    String password =
+        getFormValue("password");
+
+    // --------------------------------------------------------
+    // Validation
+    // --------------------------------------------------------
+
     if (
         wifiSsid.isEmpty() ||
-        wifiPassword.isEmpty() ||
         serverAddress.isEmpty() ||
-        friendlyName.isEmpty()
+        friendlyName.isEmpty() ||
+        username.isEmpty()
     ) {
         webServer.send(
             400,
             "text/html; charset=utf-8",
-            "<h2>Preencha todos os campos.</h2>"
+            R"rawliteral(
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+content="width=device-width,initial-scale=1">
+<title>Campos incompletos</title>
+</head>
+<body style="font-family:Arial;padding:30px">
+<h2>Preencha todos os campos obrigatórios.</h2>
+<p>Volte à página de configuração e tente novamente.</p>
+<p><a href="/">Voltar</a></p>
+</body>
+</html>
+)rawliteral"
         );
 
         showError(
             "Campos incompletos.",
-            "Preencha a configuracao."
+            "Verifique a configuracao."
         );
 
         return;
     }
 
+    // --------------------------------------------------------
+    // Update configuration
+    // --------------------------------------------------------
+
     terminalConfig.wifiSsid =
         wifiSsid;
 
-    terminalConfig.wifiPassword =
-        wifiPassword;
+    // Só altera a senha Wi-Fi quando uma nova senha é informada.
+    if (!wifiPassword.isEmpty()) {
+        terminalConfig.wifiPassword =
+            wifiPassword;
+    }
 
     terminalConfig.serverAddress =
         serverAddress;
@@ -295,7 +371,24 @@ void handleSaveConfiguration() {
     terminalConfig.friendlyName =
         friendlyName;
 
+    terminalConfig.username =
+        username;
+
+    // Só altera a senha de serviço quando uma nova senha é informada.
+    if (!password.isEmpty()) {
+        terminalConfig.password =
+            password;
+    }
+
+    // --------------------------------------------------------
+    // Persist configuration
+    // --------------------------------------------------------
+
     saveConfiguration();
+
+    // --------------------------------------------------------
+    // Response
+    // --------------------------------------------------------
 
     webServer.send(
         200,

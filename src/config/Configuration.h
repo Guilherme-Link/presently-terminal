@@ -8,6 +8,8 @@ struct TerminalConfig {
     String serverAddress;
     String friendlyName;
     String terminalId;
+    String username;
+    String password;
 };
 
 extern TerminalConfig terminalConfig;
